@@ -1,77 +1,92 @@
 
+import json
+from pathlib import Path
+
+
 class PoseEvaluator:
 
     def __init__(self):
 
-        # Example target ranges.
-        # Replace these with ranges for your selected yoga pose.
+        ROOT = Path(__file__).resolve().parent.parent
 
-        self.target_ranges = {
-            "left_elbow": (80, 110),
-            "right_elbow": (80, 110),
+        reference_path = ROOT / "models" / "reference_angles.json"
 
-            "left_shoulder": (70, 120),
-            "right_shoulder": (70, 120),
+        with open(reference_path, "r") as file:
+            self.reference_data = json.load(file)
 
-            "left_hip": (70, 120),
-            "right_hip": (70, 120),
+        self.references = self.reference_data["ref"]
+        self.tolerances = self.reference_data["tol"]
 
-            "left_knee": (80, 110),
-            "right_knee": (80, 110),
-
-            "left_ankle": (70, 120),
-            "right_ankle": (70, 120)
-        }
-
-    # Evaluate every calculated joint angle
-    def evaluate_pose(self, angles):
+    def evaluate_pose(self, pose_name, angles):
 
         results = {}
 
-        for joint_name, angle in angles.items():
+        # Check whether the predicted pose has reference data
+        if pose_name not in self.references:
+            return {
+                "error": "No reference angles available for this pose."
+            }
 
-            if angle is None:
+        reference = self.references[pose_name]
+        tolerance = self.tolerances[pose_name]
 
+        for joint_name, current_angle in angles.items():
+
+            if current_angle is None:
                 results[joint_name] = "Not visible"
                 continue
 
-            if joint_name not in self.target_ranges:
+            column = "angle_" + joint_name
 
-                results[joint_name] = "No target configured"
+            reference_angle = reference.get(column)
+
+            allowed_deviation = tolerance.get(column)
+
+            if reference_angle is None:
+                results[joint_name] = "No reference available"
                 continue
 
-            minimum, maximum = self.target_ranges[joint_name]
+            # Handle missing or invalid standard deviation
+            if allowed_deviation is None:
+                allowed_deviation = 15
 
-            if minimum <= angle <= maximum:
+            if allowed_deviation != allowed_deviation:
+                allowed_deviation = 15
 
-                results[joint_name] = "Within target range"
+            # Avoid an unrealistically narrow tolerance
+            allowed_deviation = max(
+                10,
+                2 * allowed_deviation
+            )
 
+            difference = abs(
+                current_angle - reference_angle
+            )
+
+            if difference <= allowed_deviation:
+                results[joint_name] = "Good alignment"
             else:
-
-                results[joint_name] = "Outside target range"
+                results[joint_name] = "Needs adjustment"
 
         return results
 
-    # Generate feedback messages
     def get_feedback(self, evaluation_results):
 
         feedback = []
 
         for joint_name, status in evaluation_results.items():
 
-            if status == "Not visible":
-
-                feedback.append(
-                    f"{joint_name}: Joint not clearly visible."
-                )
-
-            elif status == "Outside target range":
-
+            if status == "Needs adjustment":
                 feedback.append(
                     f"{joint_name}: Adjust your alignment."
                 )
 
+            elif status == "Not visible":
+                feedback.append(
+                    f"{joint_name}: Joint is not clearly visible."
+                )
+
         if not feedback:
-            feedback.append("All visible joints are within their configured ranges.")
+            feedback.append("No alignment issues detected.")
 
         return feedback
