@@ -1,43 +1,45 @@
 
 import cv2
+import time
 
-class camstuff:
+
+class Camera:
 
     def __init__(self, camera_id=0):
-        self.cam = cv2.VideoCapture(camera_id)
+
+        self.cap = cv2.VideoCapture(camera_id)
+
         self.frame = None
+        self.fps = 0
+        self.previous_time = time.perf_counter()
 
-    def camera(self):
+    def read_frame(self):
 
-        if not self.cam.isOpened():
-            print("Unable to open camera")
-            return
+        if not self.cap.isOpened():
+            print("Unable to open camera.")
+            return False, None
 
-        while True:
-            ret, self.frame = self.cam.read()
+        ret, self.frame = self.cap.read()
 
-            if not ret:
-                print("Failed to get the frames")
-                break
+        if not ret:
+            print("Failed to capture frame.")
+            return False, None
 
-            # Flip frame horizontally
-            self.frame = cv2.flip(self.frame, 1)
+        # Mirror the camera feed
+        self.frame = cv2.flip(self.frame, 1)
 
-            # Display camera feed
-            cv2.imshow("Camera Feed", self.frame)
+        # Calculate FPS
+        current_time = time.perf_counter()
+        elapsed_time = current_time - self.previous_time
 
-            # Exit when Q is pressed
-            if cv2.waitKey(1) & 0xFF == ord('q'):
-                break
+        if elapsed_time > 0:
+            self.fps = 1 / elapsed_time
 
-        self.release()
+        self.previous_time = current_time
+
+        return True, self.frame
 
     def release(self):
-        self.cam.release()
+
+        self.cap.release()
         cv2.destroyAllWindows()
-
-
-if __name__ == "__main__":
-    camera = camstuff()
-    camera.camera()
-
