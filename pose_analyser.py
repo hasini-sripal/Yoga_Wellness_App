@@ -1,6 +1,7 @@
 
 import cv2
-import numpy as np
+
+from features import JOINTS, landmarks_to_features
 
 
 class PoseAnalyzer:
@@ -11,27 +12,8 @@ class PoseAnalyzer:
         self.coordinates = None
         self.visibility = None
 
-        # Three landmark indices define each angle.
-        # The middle index is the joint being measured.
+        self.joints = JOINTS
 
-        self.joints = {
-            "left_elbow": (11, 13, 15),
-            "right_elbow": (12, 14, 16),
-
-            "left_shoulder": (13, 11, 23),
-            "right_shoulder": (14, 12, 24),
-
-            "left_hip": (11, 23, 25),
-            "right_hip": (12, 24, 26),
-
-            "left_knee": (23, 25, 27),
-            "right_knee": (24, 26, 28),
-
-            "left_ankle": (25, 27, 31),
-            "right_ankle": (26, 28, 32)
-        }
-
-        # Connections between landmarks for drawing the skeleton
         self.connections = [
             (11, 12),
 
@@ -52,22 +34,22 @@ class PoseAnalyzer:
             (27, 29), (28, 30)
         ]
 
-    # Store the 33 detected landmarks
     def set_landmarks(self, landmarks):
 
         self.landmarks = landmarks
 
-        self.coordinates = np.array([
-            [lm.x, lm.y, lm.z]
-            for lm in landmarks
-        ])
+        self.visibility = [
+            lm.visibility for lm in landmarks
+        ]
 
-        self.visibility = np.array([
-            lm.visibility
-            for lm in landmarks
-        ])
+    def is_visible(self, index, threshold=0.5):
 
-    # Convert normalized coordinates into pixel coordinates
+        if self.visibility is None:
+            return False
+
+        return self.visibility[index] >= threshold
+
+    # Get pixel location of a landmark
     def get_pixel_coordinates(self, index, frame):
 
         height, width = frame.shape[:2]
@@ -77,72 +59,69 @@ class PoseAnalyzer:
         x = int(landmark.x * width)
         y = int(landmark.y * height)
 
-        return (x, y)
+        return x, y
 
-    # Check whether a landmark is sufficiently visible
-    def is_visible(self, index, threshold=0.5):
+    # Get locations of all 33 landmarks
+    def get_all_locations(self, frame):
 
-        if self.visibility is None:
-            return False
+        if self.landmarks is None:
+            return {}
 
-        return self.visibility[index] >= threshold
+        locations = {}
 
-    # Calculate angle between three landmarks
-    def calculate_angle(self, index_a, index_b, index_c):
+        for index in range(len(self.landmarks)):
 
-        a = self.coordinates[index_a]
-        b = self.coordinates[index_b]
-        c = self.coordinates[index_c]
+            if self.is_visible(index):
 
-        vector1 = a - b
-        vector2 = c - b
+                locations[index] = self.get_pixel_coordinates(
+                    index, frame
+                )
 
-        magnitude1 = np.linalg.norm(vector1)
-        magnitude2 = np.linalg.norm(vector2)
+        return locations
 
-        if magnitude1 == 0 or magnitude2 == 0:
-            return None
+    # Calculate all 10 joint angles
+    # Uses the same feature calculations as model training
+    def get_all_angles(self, width, height):
 
-        cosine = np.dot(vector1, vector2) / (
-            magnitude1 * magnitude2
+        if self.landmarks is None:
+            return {}
+
+        features = landmarks_to_features(
+            self.landmarks,
+            width,
+            height
         )
 
-        cosine = np.clip(cosine, -1.0, 1.0)
-
-        angle = np.degrees(np.arccos(cosine))
-
-        return float(angle)
-
-    # Calculate every defined joint angle
-    def get_all_angles(self):
-
-        if self.coordinates is None:
+        if features is None:
             return {}
 
         angles = {}
 
-        for joint_name, indices in self.joints.items():
+        # First 99 features are coordinates.
+        # The remaining 10 features are angles.
+        angle_values = features[99:]
 
-            # Ignore angles if any of their landmarks are unclear
-            if not all(self.is_visible(i) for i in indices):
+        for index, joint_name in enumerate(self.joints):
+
+            landmark_indices = self.joints[joint_name]
+
+            if not all(
+                self.is_visible(i)
+                for i in landmark_indices
+            ):
                 angles[joint_name] = None
-                continue
-
-            angles[joint_name] = self.calculate_angle(
-                indices[0],
-                indices[1],
-                indices[2]
-            )
+            else:
+                angles[joint_name] = float(angle_values[index])
 
         return angles
 
-    # Draw circles and connecting lines
+    # Draw body skeleton
     def draw_skeleton(self, frame):
 
         if self.landmarks is None:
             return frame
 
-        # Draw connecting lines first
+        # Draw connecting lines
         for start, end in self.connections:
 
             if self.is_visible(start) and self.is_visible(end):
@@ -158,33 +137,27 @@ class PoseAnalyzer:
                     2
                 )
 
-        # Draw landmark circles
-        height, width = frame.shape[:2]
+        # Draw all visible landmark circles
+        locations = self.get_all_locations(frame)
 
-        for index, landmark in enumerate(self.landmarks):
+        for index, (x, y) in locations.items():
 
-            if self.is_visible(index):
+            cv2.circle(
+                frame,
+                (x, y),
+                5,
+                (0, 0, 255),
+                -1
+            )
 
-                x = int(landmark.x * width)
-                y = int(landmark.y * height)
-
-                cv2.circle(
-                    frame,
-                    (x, y),
-                    5,
-                    (0, 0, 255),
-                    -1
-                )
-
-                # Show landmark index beside each circle
-                cv2.putText(
-                    frame,
-                    str(index),
-                    (x + 5, y - 5),
-                    cv2.FONT_HERSHEY_SIMPLEX,
-                    0.4,
-                    (255, 255, 0),
-                    1
-                )
+            cv2.putText(
+                frame,
+                str(index),
+                (x + 5, y - 5),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                0.4,
+                (255, 255, 0),
+                1
+            )
 
         return frame
