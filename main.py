@@ -1,22 +1,33 @@
 
 import cv2
 import time
-
-from camera import Camera
-from pose_analyser import PoseAnalyzer
-from pose_evaluator import PoseEvaluator
+from pathlib import Path
 
 import mediapipe as mp
 from mediapipe.tasks import python
 from mediapipe.tasks.python import vision
 
+from camera import Camera
+from pose_analyser import PoseAnalyzer
+from pose_evaluator import PoseEvaluator
+from predict_pose import predict_pose
+
 
 # -------------------------------
-# 1. Initialize MediaPipe
+# 1. Model path
+# -------------------------------
+
+ROOT = Path(__file__).resolve().parent.parent
+
+MODEL_PATH = ROOT / "models" / "pose_landmarker_full.task"
+
+
+# -------------------------------
+# 2. Initialize MediaPipe
 # -------------------------------
 
 base_options = python.BaseOptions(
-    model_asset_path="C:\\Users\\harsh\\OneDrive\\Desktop\\yoga_pose_detection\\models\\pose_landmarker_full.task"
+    model_asset_path=str(MODEL_PATH)
 )
 
 options = vision.PoseLandmarkerOptions(
@@ -31,7 +42,7 @@ landmarker = vision.PoseLandmarker.create_from_options(
 
 
 # -------------------------------
-# 2. Create class objects
+# 3. Create class objects
 # -------------------------------
 
 camera = Camera()
@@ -42,7 +53,7 @@ evaluator = PoseEvaluator()
 
 
 # -------------------------------
-# 3. Start camera loop
+# 4. Camera loop
 # -------------------------------
 
 try:
@@ -54,68 +65,148 @@ try:
         if not ret:
             break
 
-        # Convert OpenCV BGR image to RGB
+        height, width = frame.shape[:2]
+
+        # Convert BGR to RGB
         rgb_frame = cv2.cvtColor(
             frame,
             cv2.COLOR_BGR2RGB
         )
 
-        # Convert to MediaPipe image
+        # Create MediaPipe image
         mp_image = mp.Image(
             image_format=mp.ImageFormat.SRGB,
             data=rgb_frame
         )
 
-        # Timestamp in milliseconds
+        # Timestamp for VIDEO mode
         timestamp_ms = time.monotonic_ns() // 1_000_000
 
-        # Detect pose
+        # Detect landmarks
         result = landmarker.detect_for_video(
             mp_image,
             timestamp_ms
         )
 
         # -------------------------------
-        # 4. Analyze detected landmarks
+        # 5. Process detected pose
         # -------------------------------
 
         if result.pose_landmarks:
 
             landmarks = result.pose_landmarks[0]
 
+            # Store landmarks
             analyzer.set_landmarks(landmarks)
 
-            # Draw skeleton and landmark locations
-            frame = analyzer.draw_skeleton(frame)
+            # Draw circles and skeleton
+            analyzer.draw_skeleton(frame)
 
-            # Calculate every joint angle
-            angles = analyzer.get_all_angles()
+            # Get all joint angles
+            angles = analyzer.get_all_angles(
+                width,
+                height
+            )
 
-            # Evaluate all calculated angles
-            evaluation = evaluator.evaluate_pose(angles)
+            # Predict yoga pose
+            pose_name, confidence = predict_pose(
+                landmarks,
+                width,
+                height
+            )
 
-            # Display angle and evaluation information
-            y_position = 30
-
-            for joint_name, angle in angles.items():
-
-                if angle is None:
-                    text = f"{joint_name}: Not visible"
-                else:
-                    status = evaluation[joint_name]
-                    text = f"{joint_name}: {angle:.1f} deg - {status}"
+            # Display predicted pose
+            if pose_name is not None:
 
                 cv2.putText(
                     frame,
-                    text,
-                    (10, y_position),
+                    f"Pose: {pose_name}",
+                    (10, 30),
                     cv2.FONT_HERSHEY_SIMPLEX,
-                    0.45,
-                    (255, 255, 255),
-                    1
+                    0.7,
+                    (0, 255, 255),
+                    2
                 )
 
-                y_position += 20
+                cv2.putText(
+                    frame,
+                    f"Confidence: {confidence * 100:.1f}%",
+                    (10, 60),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    0.6,
+                    (0, 255, 255),
+                    2
+                )
+
+                # Evaluate all joint angles
+                evaluation = evaluator.evaluate_pose(
+                    pose_name,
+                    angles
+                )
+
+                # Display joint angles
+                y_position = 95
+
+                for joint_name, angle in angles.items():
+
+                    if angle is None:
+                        text = f"{joint_name}: Not visible"
+
+                    else:
+                        status = evaluation.get(
+                            joint_name,
+                            "Not evaluated"
+                        )
+
+                        text = (
+                            f"{joint_name}: "
+                            f"{angle:.1f} deg - {status}"
+                        )
+
+                    cv2.putText(
+                        frame,
+                        text,
+                        (10, y_position),
+                        cv2.FONT_HERSHEY_SIMPLEX,
+                        0.42,
+                        (255, 255, 255),
+                        1
+                    )
+
+                    y_position += 22
+
+                # Display feedback
+                feedback = evaluator.get_feedback(
+                    evaluation
+                )
+
+                y_position += 10
+
+                for message in feedback:
+
+                    cv2.putText(
+                        frame,
+                        message,
+                        (10, y_position),
+                        cv2.FONT_HERSHEY_SIMPLEX,
+                        0.45,
+                        (0, 255, 0),
+                        1
+                    )
+
+                    y_position += 22
+
+            else:
+
+                cv2.putText(
+                    frame,
+                    "Unable to predict pose",
+                    (10, 30),
+                    cv2.FONT_HERSHEY_SIMPLEX,
+                    0.7,
+                    (0, 0, 255),
+                    2
+                )
 
         else:
 
@@ -124,29 +215,34 @@ try:
                 "No pose detected",
                 (10, 30),
                 cv2.FONT_HERSHEY_SIMPLEX,
-                0.8,
+                0.7,
                 (0, 0, 255),
                 2
             )
 
         # -------------------------------
-        # 5. Display FPS
+        # 6. Display FPS
         # -------------------------------
 
         cv2.putText(
             frame,
             f"FPS: {camera.fps:.1f}",
-            (10, frame.shape[0] - 20),
+            (10, height - 20),
             cv2.FONT_HERSHEY_SIMPLEX,
             0.7,
-            (0, 255, 255),
+            (255, 255, 0),
             2
         )
 
-        # Display camera
-        cv2.imshow("Yoga Wellness - Pose Detection", frame)
+        # -------------------------------
+        # 7. Display camera
+        # -------------------------------
 
-        # Press Q to exit
+        cv2.imshow(
+            "Yoga Wellness - Pose Detection",
+            frame
+        )
+
         if cv2.waitKey(1) & 0xFF == ord("q"):
             break
 
