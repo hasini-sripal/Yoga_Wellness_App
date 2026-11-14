@@ -1,78 +1,77 @@
 
-import numpy as np
-
-
-class PoseAnalyzer:
+class PoseEvaluator:
 
     def __init__(self):
-        self.landmarks = None
 
-    # Store the landmarks detected by MediaPipe
-    def set_landmarks(self, landmarks):
-        self.landmarks = landmarks
+        # Example target ranges.
+        # Replace these with ranges for your selected yoga pose.
 
-    # Calculate the angle between three landmarks
-    def calculate_angle(self, point_a, point_b, point_c):
+        self.target_ranges = {
+            "left_elbow": (80, 110),
+            "right_elbow": (80, 110),
 
-        a = np.array(point_a)
-        b = np.array(point_b)
-        c = np.array(point_c)
+            "left_shoulder": (70, 120),
+            "right_shoulder": (70, 120),
 
-        vector1 = a - b
-        vector2 = c - b
+            "left_hip": (70, 120),
+            "right_hip": (70, 120),
 
-        magnitude1 = np.linalg.norm(vector1)
-        magnitude2 = np.linalg.norm(vector2)
+            "left_knee": (80, 110),
+            "right_knee": (80, 110),
 
-        if magnitude1 == 0 or magnitude2 == 0:
-            return None
+            "left_ankle": (70, 120),
+            "right_ankle": (70, 120)
+        }
 
-        cosine_angle = np.dot(vector1, vector2) / (
-            magnitude1 * magnitude2
-        )
+    # Evaluate every calculated joint angle
+    def evaluate_pose(self, angles):
 
-        cosine_angle = np.clip(cosine_angle, -1.0, 1.0)
+        results = {}
 
-        angle = np.degrees(np.arccos(cosine_angle))
+        for joint_name, angle in angles.items():
 
-        return angle
+            if angle is None:
 
-    # Calculate the distance between two landmarks
-    def calculate_distance(self, point_a, point_b):
+                results[joint_name] = "Not visible"
+                continue
 
-        a = np.array(point_a)
-        b = np.array(point_b)
+            if joint_name not in self.target_ranges:
 
-        distance = np.linalg.norm(a - b)
+                results[joint_name] = "No target configured"
+                continue
 
-        return distance
+            minimum, maximum = self.target_ranges[joint_name]
 
-    # Get the coordinates of a particular landmark
-    def get_coordinates(self, landmark_index):
+            if minimum <= angle <= maximum:
 
-        if self.landmarks is None:
-            return None
+                results[joint_name] = "Within target range"
 
-        landmark = self.landmarks[landmark_index]
+            else:
 
-        return np.array([
-            landmark.x,
-            landmark.y,
-            landmark.z
-        ])
+                results[joint_name] = "Outside target range"
 
-    # Calculate a joint angle using landmark indices
-    def get_joint_angle(self, index_a, index_b, index_c):
+        return results
 
-        point_a = self.get_coordinates(index_a)
-        point_b = self.get_coordinates(index_b)
-        point_c = self.get_coordinates(index_c)
+    # Generate feedback messages
+    def get_feedback(self, evaluation_results):
 
-        if point_a is None or point_b is None or point_c is None:
-            return None
+        feedback = []
 
-        return self.calculate_angle(
-            point_a,
-            point_b,
-            point_c
-        )
+        for joint_name, status in evaluation_results.items():
+
+            if status == "Not visible":
+
+                feedback.append(
+                    f"{joint_name}: Joint not clearly visible."
+                )
+
+            elif status == "Outside target range":
+
+                feedback.append(
+                    f"{joint_name}: Adjust your alignment."
+                )
+
+        if not feedback:
+            feedback.append("All visible joints are within their configured ranges.")
+
+        return feedback
