@@ -3,7 +3,7 @@ import cv2
 import time
 
 from camera import Camera
-from pose_analyzer import PoseAnalyzer
+from pose_analyser import PoseAnalyzer
 from pose_evaluator import PoseEvaluator
 
 import mediapipe as mp
@@ -16,7 +16,7 @@ from mediapipe.tasks.python import vision
 # -------------------------------
 
 base_options = python.BaseOptions(
-    model_asset_path="models/pose_landmarker.task"
+    model_asset_path="C:\\Users\\harsh\\OneDrive\\Desktop\\yoga_pose_detection\\models\\pose_landmarker_full.task"
 )
 
 options = vision.PoseLandmarkerOptions(
