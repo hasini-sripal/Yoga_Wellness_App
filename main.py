@@ -65,28 +65,37 @@ try:
         if not ret:
             break
 
+            # Resize frame for MediaPipe
         height, width = frame.shape[:2]
-
+        
+        new_width = 640
+        new_height = int(height * new_width / width)
+        
+        small_frame = cv2.resize(
+            frame,
+            (new_width, new_height)
+        )
+        
         # Convert BGR to RGB
         rgb_frame = cv2.cvtColor(
-            frame,
+            small_frame,
             cv2.COLOR_BGR2RGB
         )
-
+        
         # Create MediaPipe image
         mp_image = mp.Image(
             image_format=mp.ImageFormat.SRGB,
             data=rgb_frame
         )
-
-        # Timestamp for VIDEO mode
-        timestamp_ms = time.monotonic_ns() // 1_000_000
-
-        # Detect landmarks
-        result = landmarker.detect_for_video(
-            mp_image,
-            timestamp_ms
-        )
+    
+            # Timestamp for VIDEO mode
+            timestamp_ms = time.monotonic_ns() // 1_000_000
+    
+            # Detect landmarks
+            result = landmarker.detect_for_video(
+                mp_image,
+                timestamp_ms
+            )
 
         # -------------------------------
         # 5. Process detected pose
