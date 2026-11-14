@@ -1,44 +1,77 @@
 
 class PoseEvaluator:
 
-    def __init__(self, pose_name, angle_rules):
-        self.pose_name = pose_name
-        self.angle_rules = angle_rules
-        self.feedback = []
+    def __init__(self):
 
+        # Example target ranges.
+        # Replace these with ranges for your selected yoga pose.
+
+        self.target_ranges = {
+            "left_elbow": (80, 110),
+            "right_elbow": (80, 110),
+
+            "left_shoulder": (70, 120),
+            "right_shoulder": (70, 120),
+
+            "left_hip": (70, 120),
+            "right_hip": (70, 120),
+
+            "left_knee": (80, 110),
+            "right_knee": (80, 110),
+
+            "left_ankle": (70, 120),
+            "right_ankle": (70, 120)
+        }
+
+    # Evaluate every calculated joint angle
     def evaluate_pose(self, angles):
-        self.feedback = []
 
-        for angle_name, rule in self.angle_rules.items():
+        results = {}
 
-            # Check whether the angle was detected
-            if angle_name not in angles or angles[angle_name] is None:
-                self.feedback.append(
-                    f"Unable to detect {angle_name}."
-                )
+        for joint_name, angle in angles.items():
+
+            if angle is None:
+
+                results[joint_name] = "Not visible"
                 continue
 
-            current_angle = angles[angle_name]
+            if joint_name not in self.target_ranges:
 
-            # Get the acceptable angle range
-            min_angle = rule["min"]
-            max_angle = rule["max"]
+                results[joint_name] = "No target configured"
+                continue
 
-            # Compare the detected angle with the required range
-            if min_angle <= current_angle <= max_angle:
-                self.feedback.append(
-                    f"{angle_name}: Good!"
-                )
-            elif current_angle < min_angle:
-                self.feedback.append(
-                    f"{angle_name}: Increase the angle slightly."
-                )
+            minimum, maximum = self.target_ranges[joint_name]
+
+            if minimum <= angle <= maximum:
+
+                results[joint_name] = "Within target range"
+
             else:
-                self.feedback.append(
-                    f"{angle_name}: Decrease the angle slightly."
+
+                results[joint_name] = "Outside target range"
+
+        return results
+
+    # Generate feedback messages
+    def get_feedback(self, evaluation_results):
+
+        feedback = []
+
+        for joint_name, status in evaluation_results.items():
+
+            if status == "Not visible":
+
+                feedback.append(
+                    f"{joint_name}: Joint not clearly visible."
                 )
 
-        return self.feedback
+            elif status == "Outside target range":
 
-    def get_feedback(self):
-        return self.feedback
+                feedback.append(
+                    f"{joint_name}: Adjust your alignment."
+                )
+
+        if not feedback:
+            feedback.append("All visible joints are within their configured ranges.")
+
+        return feedback
